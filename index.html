@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- ピンチ拡大は許可する（user-scalable=no / maximum-scale は入れない） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- 配色は「暗い固定」（体育館で見やすい暗い画面） -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="app-id" content="badminton_pairing" />
+    <meta name="description" content="バドミントンのダブルスの組み合わせ（乱数表）を、公平に自動で作るアプリ。休憩の管理・得点板・MVP 表彰つき" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- iPhone のホーム画面アプリ: ステータスバーは不透明にする（暗い固定: black）。
+         black-translucent にすると、ステータスバーの下に入った内容を iOS がぼかして、画面の上端の文字が読みにくくなる -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="バド乱数表" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <title>バド乱数表</title>
+    <!-- QRCode.js（オフラインで動くように同梱。ライセンスは public/vendor/qrcode.LICENSE） -->
+    <script src="vendor/qrcode.min.js"></script>
+    <script type="module" crossorigin src="./assets/index-B5XafHnn.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-p0Hq80V1.css">
+  <link rel="manifest" href="./manifest.webmanifest"></head>
+  <body class="bg-slate-950 text-slate-100 min-h-dvh flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+
+  <!-- トップヘッダー（全画面表示時のノッチ・ステータスバーを考慮したセーフエリア対応） -->
+  <header class="app-header sticky top-0 z-40 bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md px-4 pb-3">
+    <div class="max-w-md mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-md shadow-emerald-700/30">
+          <span class="text-base">🏸</span>
+        </div>
+        <div>
+          <h1 class="text-base font-extrabold text-white tracking-tight leading-tight whitespace-nowrap">バド乱数表 <span id="version-line" class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-700 text-emerald-100 font-normal">v<span id="version"></span></span></h1>
+          <p class="text-[10px] text-emerald-400 font-medium tracking-wide whitespace-nowrap">DOUBLE MATCHMAKER</p>
+        </div>
+      </div>
+
+      <!-- 右上ステータスバッジ -->
+      <div id="header-summary-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-700/50">
+        準備中
+      </div>
+    </div>
+  </header>
+
+  <!-- エラー発生時のデバッグバナー -->
+  <div id="error-banner" class="error-banner hidden bg-rose-600 text-white text-xs p-2.5 font-mono font-bold text-center z-50"></div>
+
+  <!-- トースト通知コンテナ -->
+  <div id="toast-container" class="toast-container fixed left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center space-y-2 w-11/12 max-w-sm"></div>
+
+  <!-- メインコンテンツ領域（タブごとに切り替え、ナビバー56px＋ホームバー分のみ確保） -->
+  <main class="flex-1 w-full max-w-md mx-auto overflow-y-auto pb-14" style="padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));">
+    <!-- 1. 試合（Matches）タブ -->
+    <section id="tab-matches" class="w-full">
+      <div id="matches-container"></div>
+      <button id="install-open" type="button" class="link">📲 アプリとしてインストールする方法</button>
+    </section>
+
+    <!-- 2. メンバー（Players）タブ -->
+    <section id="tab-players" class="w-full" style="display: none;">
+      <div id="players-container"></div>
+    </section>
+
+    <!-- 3. 履歴・順位（Stats）タブ -->
+    <section id="tab-stats" class="w-full" style="display: none;">
+      <div id="stats-container"></div>
+    </section>
+
+    <!-- 4. 得点板（Scoreboard）タブ -->
+    <section id="tab-scoreboard" class="w-full" style="display: none;">
+      <div id="scoreboard-container"></div>
+    </section>
+
+    <!-- 5. 設定（Settings）タブ -->
+    <section id="tab-settings" class="w-full" style="display: none;">
+      <div id="settings-container"></div>
+    </section>
+
+    <!-- 6. ヘルプ（Help）タブ -->
+    <section id="tab-help" class="w-full" style="display: none;">
+      <div id="help-container"></div>
+    </section>
+  </main>
+
+  <!-- ボトム固定ナビゲーションバー（6タブ構成） -->
+  <nav style="z-index: 9999; padding-bottom: env(safe-area-inset-bottom, 0px);" class="fixed bottom-0 left-0 right-0 bg-slate-900/95 border-t border-slate-800/90 backdrop-blur-lg bottom-nav select-none pointer-events-auto">
+    <div class="max-w-md mx-auto grid grid-cols-6 h-14">
+      <button type="button" id="nav-matches" aria-current="page" class="nav-tab relative flex flex-col items-center justify-center space-y-0.5 text-emerald-400 font-bold transition-all cursor-pointer active:scale-95">
+        <span class="text-lg pointer-events-none">🏸</span>
+        <span class="text-[11px] tracking-tight pointer-events-none">試合</span>
+      </button>
+
+      <button type="button" id="nav-players" class="nav-tab relative flex flex-col items-center justify-center space-y-0.5 text-slate-400 transition-all cursor-pointer active:scale-95">
+        <span class="text-lg pointer-events-none">👥</span>
+        <span class="text-[11px] tracking-tight pointer-events-none">メンバー</span>
+      </button>
+
+      <button type="button" id="nav-stats" class="nav-tab relative flex flex-col items-center justify-center space-y-0.5 text-slate-400 transition-all cursor-pointer active:scale-95">
+        <span class="text-lg pointer-events-none">📊</span>
+        <span class="text-[11px] tracking-tight pointer-events-none">成績</span>
+      </button>
+
+      <button type="button" id="nav-scoreboard" class="nav-tab relative flex flex-col items-center justify-center space-y-0.5 text-slate-400 transition-all cursor-pointer active:scale-95">
+        <span class="text-lg pointer-events-none">🔢</span>
+        <span class="text-[11px] tracking-tight pointer-events-none">得点板</span>
+      </button>
+
+      <button type="button" id="nav-settings" class="nav-tab relative flex flex-col items-center justify-center space-y-0.5 text-slate-400 transition-all cursor-pointer active:scale-95">
+        <span class="text-lg pointer-events-none">⚙️</span>
+        <span class="text-[11px] tracking-tight pointer-events-none">設定</span>
+      </button>
+
+      <button type="button" id="nav-help" class="nav-tab relative flex flex-col items-center justify-center space-y-0.5 text-slate-400 transition-all cursor-pointer active:scale-95">
+        <span class="text-lg pointer-events-none">❓</span>
+        <span class="text-[11px] tracking-tight pointer-events-none">ヘルプ</span>
+      </button>
+    </div>
+  </nav>
+
+    <!-- インストール方法（最初の画面から開く） -->
+    <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title">
+      <h2 id="install-title">ホーム画面に追加して使う</h2>
+      <p class="muted">インストールすると、ホーム画面から開けて、オフラインでも使えます。</p>
+      <button id="install-now" type="button" class="tpl-button primary" hidden>今すぐインストール</button>
+
+      <details data-platform="ios">
+        <summary>iPhone / iPad</summary>
+        <ol>
+          <li><strong>Safari</strong> でこのページを開く</li>
+          <li>共有ボタン(□から↑が出ているマーク)をタップ</li>
+          <li>「<strong>ホーム画面に追加</strong>」を選ぶ</li>
+          <li>右上の「追加」をタップ</li>
+        </ol>
+      </details>
+      <details data-platform="android">
+        <summary>Android</summary>
+        <ol>
+          <li><strong>Chrome</strong> でこのページを開く</li>
+          <li>右上のメニュー(⋮)をタップ</li>
+          <li>「<strong>アプリをインストール</strong>」または「ホーム画面に追加」を選ぶ</li>
+          <li>「インストール」をタップ</li>
+        </ol>
+      </details>
+      <details data-platform="pc">
+        <summary>パソコン(Chrome / Edge)</summary>
+        <ol>
+          <li>アドレスバーの右端にあるインストールのマークをクリック</li>
+          <li>「<strong>インストール</strong>」を選ぶ</li>
+        </ol>
+      </details>
+
+      <button type="button" class="tpl-button" data-close>とじる</button>
+    </dialog>
+
+    <!-- デバッグモードのときだけ出る操作（src/debug.ts。バージョンの表示を続けて 5 回タップで切り替え） -->
+    <div id="debug-panel" class="debug-panel" hidden></div>
+
+    <!-- 新しい版があるときに出る。「更新」で切り替わる。「あとで」で閉じる（次に開いたとき、また出る） -->
+    <div id="update-banner" class="banner" role="status" hidden>
+      <span>更新があります</span>
+      <div class="banner__actions">
+        <button id="update-later" type="button" class="tpl-button">あとで</button>
+        <button id="update-button" type="button" class="tpl-button primary">更新</button>
+      </div>
+    </div>
+
+    <!-- 起動できなかったときの復旧（main.ts が読み込めなくても動く、別のふつうのスクリプト） -->
+    <div id="boot-error" class="banner boot-error" hidden>
+      <span>うまく読み込めませんでした。<small>記録は消えません</small></span>
+      <button id="boot-repair" type="button" class="tpl-button primary">なおす</button>
+    </div>
+
+    <script src="boot.js"></script>
+  </body>
+</html>
